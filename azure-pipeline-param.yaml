@@ -1,0 +1,103 @@
+trigger:
+- none
+
+# parameters:
+# - name: 'resourceGroupName'
+#   displayName: 'Resource Group Name'
+#   type: string
+#   default: ''
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  terraformVersion: 'latest'
+  terraformWorkingDirectory: '$(System.DefaultWorkingDirectory)'
+
+parameters:
+- name: 'resourceGroupName'
+  displayName: 'Resource Group Name'
+  type: string
+  default: ''  
+
+steps:
+
+# ============================================================
+# 1. Install Terraform
+# ============================================================
+
+- task: TerraformInstaller@1
+  displayName: 'Install Terraform'
+  inputs:
+    terraformVersion: '$(terraformVersion)'
+
+
+# ============================================================
+# 2. Check Terraform version
+# ============================================================
+
+- script: |
+    terraform version
+  displayName: 'Check Terraform Version'
+
+
+# ============================================================
+# 3. Terraform Init
+# ============================================================
+
+- task: TerraformTask@5
+  displayName: 'Terraform Init'
+  inputs:
+    provider: 'azurerm'
+    command: 'init'
+    workingDirectory: '$(terraformWorkingDirectory)'
+
+    backendServiceArm: 'SHA-TEST-01-SC'
+    backendAzureRmResourceGroupName: 'rg-python-demo'
+    backendAzureRmStorageAccountName: 'shastatefile'
+    backendAzureRmContainerName: 'tfstate'
+    backendAzureRmKey: 'terraform.tfstate'
+
+
+# ============================================================
+# 4. Terraform Validate
+# ============================================================
+
+- task: TerraformTask@5
+  displayName: 'Terraform Validate'
+  inputs:
+    provider: 'azurerm'
+    command: 'validate'
+    workingDirectory: '$(terraformWorkingDirectory)'
+
+
+# ============================================================
+# 5. Terraform Plan
+# ============================================================
+
+- task: TerraformTask@5
+  name: terraformPlan
+  displayName: 'Terraform Plan'
+  inputs:
+    provider: 'azurerm'
+    command: 'plan'
+    workingDirectory: '$(terraformWorkingDirectory)'
+    environmentServiceNameAzureRM: 'SHA-TEST-01-SC'
+    commandOptions: >
+      -var="resource_group_name=${{ parameters.resourceGroupName }}"
+      -out=tfplan
+
+
+# ============================================================
+# 6. Terraform Apply
+# ============================================================
+
+- task: TerraformTask@5
+  displayName: 'Terraform Apply'
+  condition: and(succeeded(), eq(variables['terraformPlan.changesPresent'], 'true'))
+  inputs:
+    provider: 'azurerm'
+    command: 'apply'
+    workingDirectory: '$(terraformWorkingDirectory)'
+    environmentServiceNameAzureRM: 'SHA-TEST-01-SC'
+    commandOptions: 'tfplan'
